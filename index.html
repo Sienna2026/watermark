@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>时间水印 · Timestamp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:         #f5f0e8;
+  --bg2:        #ede8df;
+  --bg3:        #e4ddd2;
+  --border:     #d4ccc0;
+  --border2:    #c8bfb2;
+  --orange:     #d95000;
+  --orange-dim: #a03a00;
+  --orange-bg:  #fde8da;
+  --text:       #2a2016;
+  --text2:      #6b5f52;
+  --text3:      #a8998a;
+  --green:      #1a7a3a;
+  --green-bg:   #e6f5ec;
+  --amber:      #a06000;
+  --amber-bg:   #fdf3e0;
+  --blue:       #1a5fa0;
+  --blue-bg:    #ddeaf6;
+  --radius:     8px;
+  --radius-lg:  12px;
+  --mono:       'Share Tech Mono', monospace;
+  --ui:         'Orbitron', monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* subtle paper grain */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+  opacity: .6;
+}
+
+/* ── Header ── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 32px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+}
+.logo {
+  font-family: var(--ui);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--orange);
+  letter-spacing: 2px;
+}
+.logo span {
+  color: var(--text2);
+  font-weight: 400;
+  font-size: 11px;
+  margin-left: 10px;
+  letter-spacing: 1px;
+  font-family: var(--mono);
+}
+header a {
+  color: var(--text2);
+  text-decoration: none;
+  font-size: 11px;
+  letter-spacing: 1px;
+  border: 1px solid var(--border2);
+  padding: 5px 13px;
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  transition: color .2s, border-color .2s;
+}
+header a:hover { color: var(--orange); border-color: var(--orange); }
+
+/* ── Main ── */
+main { max-width: 900px; margin: 0 auto; padding: 28px 22px 80px; }
+
+.section-label {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--text3);
+  margin-bottom: 11px;
+  font-family: var(--mono);
+}
+
+/* ── Settings panel ── */
+.settings-panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 22px;
+  margin-bottom: 22px;
+  display: grid;
+  grid-template-columns: 1fr 185px;
+  gap: 26px;
+  align-items: start;
+}
+.settings-left { display: flex; flex-direction: column; gap: 18px; }
+
+.setting-row { display: flex; flex-direction: column; gap: 7px; }
+.setting-row label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--text2);
+  text-transform: uppercase;
+}
+
+/* swatches */
+.swatches { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+.swatch {
+  width: 25px; height: 25px; border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform .15s, border-color .15s;
+  flex-shrink: 0;
+}
+.swatch:hover { transform: scale(1.2); }
+.swatch.active { border-color: var(--orange) !important; box-shadow: 0 0 0 2px var(--bg2), 0 0 0 3px var(--orange); }
+.swatch[data-color="#ffffff"] { border-color: var(--border2); }
+
+/* toggle buttons */
+.toggle-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.tbtn {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 5px 13px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all .15s;
+  letter-spacing: .5px;
+}
+.tbtn:hover { border-color: var(--orange-dim); color: var(--text); }
+.tbtn.active { background: var(--orange-bg); border-color: var(--orange); color: var(--orange); }
+
+.auto-note {
+  font-size: 12px;
+  color: var(--text3);
+  padding: 5px 10px;
+  border-left: 2px solid var(--border2);
+  line-height: 1.5;
+}
+
+.time-info {
+  background: transparent;
+  border: none;
+  border-left: 2px solid var(--border2);
+  border-radius: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 1.9;
+}
+.time-info .ti-label {
+  color: var(--text3);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.time-info code {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--orange);
+}
+.time-info .ti-hint {
+  color: var(--text3);
+  font-size: 11px;
+  margin-top: 2px;
+  display: block;
+}
+
+/* ── Preview pane ── */
+.preview-pane {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+}
+.preview-label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--text3);
+  text-transform: uppercase;
+}
+.preview-frame {
+  width: 168px;
+  height: 224px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.preview-ph {
+  color: var(--text3);
+  font-size: 11px;
+  text-align: center;
+  line-height: 2;
+}
+#preview-canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 7px;
+  display: block;
+}
+.preview-hint {
+  font-size: 10px;
+  color: var(--text3);
+  text-align: center;
+  line-height: 1.7;
+}
+
+/* ── Drop zone ── */
+.drop-zone {
+  border: 1.5px dashed var(--border2);
+  border-radius: var(--radius-lg);
+  padding: 50px 22px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  margin-bottom: 22px;
+  background: var(--bg2);
+}
+.drop-zone:hover, .drop-zone.over {
+  border-color: var(--orange);
+  background: var(--orange-bg);
+  border-style: solid;
+}
+.dz-icon  { font-size: 30px; margin-bottom: 13px; opacity: .4; line-height: 1; }
+.dz-title { font-family: var(--ui); font-size: 13px; color: var(--text); margin-bottom: 7px; letter-spacing: 1px; }
+.dz-sub   { font-size: 12px; color: var(--text2); }
+.dz-sub b { color: var(--orange); font-weight: normal; }
+.dz-lock  { margin-top: 13px; font-size: 11px; color: var(--text3); letter-spacing: .5px; }
+#file-input { display: none; }
+
+/* ── Processing ── */
+#processing-area { display: none; margin-bottom: 22px; }
+.prog-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 22px 26px;
+}
+.prog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 14px;
+}
+.prog-title { font-family: var(--ui); font-size: 11px; letter-spacing: 1.5px; color: var(--text2); }
+.prog-count { font-size: 22px; color: var(--orange); font-family: var(--ui); }
+.prog-track { height: 3px; background: var(--bg3); border-radius: 2px; overflow: hidden; margin-bottom: 10px; }
+.prog-fill  { height: 100%; background: var(--orange); border-radius: 2px; transition: width .25s ease; width: 0%; }
+.prog-sub   { font-size: 12px; color: var(--text3); }
+
+/* ── Result ── */
+#result-area { display: none; }
+
+.result-card {
+  border-radius: var(--radius-lg);
+  padding: 18px 22px;
+  margin-bottom: 14px;
+  border: 1px solid;
+}
+.result-card.ok   { background: var(--green-bg); border-color: #8ecfaa; }
+.result-card.warn { background: var(--amber-bg); border-color: #e0b870; }
+
+.rc-head { display: flex; align-items: baseline; gap: 9px; margin-bottom: 5px; }
+.rc-icon  { font-size: 14px; }
+.rc-title { font-family: var(--ui); font-size: 12px; letter-spacing: 1px; }
+.rc-ok   .rc-title { color: var(--green); }
+.rc-warn .rc-title { color: var(--amber); }
+
+.src-stats { display: flex; gap: 16px; margin-top: 9px; font-size: 11px; color: var(--text3); }
+.src-stats span span { color: var(--text2); }
+
+.expand-btn {
+  background: none; border: none;
+  font-family: var(--mono); font-size: 12px;
+  cursor: pointer; padding: 0;
+  margin-top: 11px;
+  letter-spacing: .5px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  display: block;
+}
+.expand-btn.amber { color: var(--amber); }
+.expand-btn.muted { color: var(--text3); }
+
+.clist { display: none; margin-top: 8px; border-radius: var(--radius); overflow: hidden; }
+.clist.open { display: block; }
+.clist.fail-bg   { background: #100e00; }
+.clist.mtime-bg  { background: #0a0a14; }
+
+.clist-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 12px;
+  font-size: 12px;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+}
+.clist-item:last-child { border-bottom: none; }
+.ci-name   { color: var(--text2); flex-shrink: 0; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ci-detail { color: var(--text3); text-align: right; font-size: 11px; }
+
+/* buttons */
+.action-row { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 4px; }
+.btn {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: .5px;
+  padding: 9px 20px;
+  border-radius: var(--radius);
+  border: 1px solid;
+  cursor: pointer;
+  transition: all .15s;
+}
+.btn-primary { background: var(--orange); border-color: var(--orange); color: #000; font-weight: bold; }
+.btn-primary:hover { background: #ff7e1a; border-color: #ff7e1a; }
+.btn-warn  { background: transparent; border-color: #3a2800; color: var(--amber); }
+.btn-warn:hover  { border-color: var(--amber); }
+
+.reset-row { text-align: center; margin-top: 13px; }
+.reset-btn {
+  background: none; border: none;
+  color: var(--text3); font-family: var(--mono); font-size: 12px;
+  cursor: pointer; letter-spacing: .5px;
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.reset-btn:hover { color: var(--text2); }
+
+@media (max-width: 600px) {
+  .settings-panel { grid-template-columns: 1fr; }
+  .preview-pane   { flex-direction: row; align-items: flex-start; gap: 14px; }
+  .preview-frame  { width: 110px; height: 147px; flex-shrink: 0; }
+  header { padding: 13px 16px; }
+  main   { padding: 18px 14px 60px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">TIMESTAMP<span>/ 时间水印</span></div>
+  <a href="https://sienna2026.github.io/watermark" target="_blank">GitHub ↗</a>
+</header>
+
+<main>
+
+  <!-- Settings -->
+  <div class="section-label">// 设置</div>
+  <div class="settings-panel">
+    <div class="settings-left">
+
+      <!-- Color -->
+      <div class="setting-row">
+        <label>水印颜色</label>
+        <div class="swatches" id="swatches">
+          <div class="swatch active" data-color="#ff6500" style="background:#ff6500"></div>
+          <div class="swatch" data-color="#ffffff" style="background:#ffffff"></div>
+          <div class="swatch" data-color="#000000" style="background:#000000"></div>
+          <div class="swatch" data-color="#ffd700" style="background:#ffd700"></div>
+          <div class="swatch" data-color="#00bfff" style="background:#00bfff"></div>
+          <div class="swatch" data-color="#ff69b4" style="background:#ff69b4"></div>
+          <div class="swatch" data-color="#7cfc00" style="background:#7cfc00"></div>
+          <div class="swatch" data-color="#ff4444" style="background:#ff4444"></div>
+          <div class="swatch" data-color="#a855f7" style="background:#a855f7"></div>
+          <div class="swatch" data-color="#888888" style="background:#888888"></div>
+        </div>
+      </div>
+
+      <!-- Position -->
+      <div class="setting-row">
+        <label>水印位置</label>
+        <div class="toggle-group" id="pos-group">
+          <button class="tbtn active" data-pos="br">右下</button>
+          <button class="tbtn" data-pos="bl">左下</button>
+          <button class="tbtn" data-pos="tr">右上</button>
+          <button class="tbtn" data-pos="tl">左上</button>
+        </div>
+      </div>
+
+      <!-- Style -->
+      <div class="setting-row">
+        <label>水印样式</label>
+        <div class="toggle-group" id="style-group">
+          <button class="tbtn active" data-style="vertical">竖版 &nbsp;'26 06 24</button>
+          <button class="tbtn" data-style="horizontal">横版 &nbsp;2026-06-24</button>
+        </div>
+      </div>
+
+      <!-- Font size -->
+      <div class="setting-row">
+        <label>字号大小</label>
+        <div class="auto-note">自动适配图片尺寸（短边 4%），无需手动调整</div>
+      </div>
+
+      <!-- Time info -->
+      <div class="time-info">
+        <div class="ti-label">// 时间读取优先级</div>
+        文件名年月日（如 <code>20260624_任意.jpg</code>）<br>
+        › EXIF 拍摄时间 › 文件系统修改时间
+        <span class="ti-hint">如水印时间不准，将文件改名为日期格式即可覆盖</span>
+      </div>
+
+    </div>
+
+    <!-- Preview -->
+    <div class="preview-pane">
+      <div class="preview-label">实时预览</div>
+      <div class="preview-frame" id="preview-frame">
+        <canvas id="preview-canvas"></canvas>
+      </div>
+      <div class="preview-hint">调整选项<br>实时更新</div>
+    </div>
+  </div>
+
+  <!-- Drop zone -->
+  <div class="drop-zone" id="drop-zone">
+    <div class="dz-icon">⬡</div>
+    <div class="dz-title">拖入照片 / 点击选择</div>
+    <div class="dz-sub">支持 JPG &nbsp;·&nbsp; PNG &nbsp;·&nbsp; HEIC &nbsp;·&nbsp; <b>可批量选择</b></div>
+    <div class="dz-lock">🔒 照片不会上传到任何服务器，全程本地处理</div>
+    <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.heic,image/jpeg,image/png,image/heic" multiple>
+  </div>
+
+  <!-- Processing -->
+  <div id="processing-area">
+    <div class="prog-card">
+      <div class="prog-header">
+        <div class="prog-title">// 处理中</div>
+        <div class="prog-count"><span id="prog-done">0</span> / <span id="prog-total">0</span></div>
+      </div>
+      <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+      <div class="prog-sub" id="prog-sub">正在初始化…</div>
+    </div>
+  </div>
+
+  <!-- Result -->
+  <div id="result-area"></div>
+
+</main>
+
+<script>
+// ─── State ───────────────────────────────────────────
+const S = { color: '#ff6500', position: 'br', style: 'vertical', firstImg: null };
+let allResults = [];
+
+// ─── Settings UI ─────────────────────────────────────
+document.querySelectorAll('.swatch').forEach(el => el.addEventListener('click', () => {
+  document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+  el.classList.add('active');
+  S.color = el.dataset.color;
+  updatePreview();
+}));
+document.querySelectorAll('#pos-group .tbtn').forEach(el => el.addEventListener('click', () => {
+  document.querySelectorAll('#pos-group .tbtn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  S.position = el.dataset.pos;
+  updatePreview();
+}));
+document.querySelectorAll('#style-group .tbtn').forEach(el => el.addEventListener('click', () => {
+  document.querySelectorAll('#style-group .tbtn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  S.style = el.dataset.style;
+  updatePreview();
+}));
+
+// ─── Preview (always canvas-rendered) ────────────────
+const pcanv = document.getElementById('preview-canvas');
+
+function updatePreview() {
+  const frame = document.getElementById('preview-frame');
+  const fw = frame.clientWidth  || 168;
+  const fh = frame.clientHeight || 224;
+  const dpr = 2;
+  pcanv.width  = fw * dpr;
+  pcanv.height = fh * dpr;
+
+  const ctx = pcanv.getContext('2d');
+
+  if (S.firstImg) {
+    // draw photo cover
+    const img   = S.firstImg;
+    const scale = Math.max((fw*dpr)/img.naturalWidth, (fh*dpr)/img.naturalHeight);
+    const dw    = img.naturalWidth  * scale;
+    const dh    = img.naturalHeight * scale;
+    ctx.drawImage(img, (fw*dpr-dw)/2, (fh*dpr-dh)/2, dw, dh);
+  } else {
+    // placeholder background
+    ctx.fillStyle = getComputedStyle(document.documentElement)
+      .getPropertyValue('--bg3').trim() || '#e4ddd2';
+    ctx.fillRect(0, 0, pcanv.width, pcanv.height);
+    // placeholder text
+    ctx.fillStyle = getComputedStyle(document.documentElement)
+      .getPropertyValue('--text3').trim() || '#a8998a';
+    ctx.font = `${13 * dpr}px 'Share Tech Mono', monospace`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('上传后显示预览', fw * dpr / 2, fh * dpr / 2);
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  // always draw watermark on preview using today's date
+  drawWM(ctx, fw * dpr, fh * dpr, new Date());
+}
+
+function renderPreviewCanvas() {
+  updatePreview();
+}
+
+// ─── Watermark drawing (mirrors py logic) ────────────
+function drawWM(ctx, W, H, dt) {
+  const short    = Math.min(W, H);
+  const fontSize = Math.max(20, Math.floor(short * 0.04));
+  const margin   = Math.max(10, Math.floor(short * 0.02));
+  const gap      = Math.floor(fontSize * 0.6);
+
+  ctx.font         = `bold ${fontSize}px 'Share Tech Mono', monospace`;
+  ctx.fillStyle    = S.color;
+  ctx.textBaseline = 'alphabetic';
+
+  const yy   = String(dt.getFullYear()).slice(2);
+  const mm   = String(dt.getMonth()+1).padStart(2,'0');
+  const dd   = String(dt.getDate()).padStart(2,'0');
+  const yyyy = String(dt.getFullYear());
+  const pos  = S.position;
+
+  if (S.style === 'vertical') {
+    // Strategy: draw text horizontally on an offscreen canvas,
+    // then rotate and paste onto the main canvas — same as py's approach.
+    // Reading order (top→bottom along edge): yy  mm  dd
+    // So in the horizontal strip: [yy] [gap] [mm] [gap] [dd]
+
+    // offscreen canvas approach: draw groups horizontally then rotate
+    // so preview and exported image use identical logic
+
+    // groupGap: space between yy / mm / dd groups
+    const groupGap = Math.floor(fontSize * 1.2);
+
+    // groups: drawn left→right as [dd, mm, "yy] so after +90° rotation:
+    // left→bottom, right→top, giving reading order yy(top) mm dd(bottom/corner)
+    const groups2 = [dd, mm, `"${yy}`];
+    const widths2 = groups2.map(g => {
+      ctx.font = `bold ${fontSize}px 'Share Tech Mono', monospace`;
+      return ctx.measureText(g).width;
+    });
+    const strip2W = widths2.reduce((a,b)=>a+b,0) + groupGap*(groups2.length-1);
+    const strip2H = fontSize * 1.5;
+
+    const off2  = document.createElement('canvas');
+    off2.width  = Math.ceil(strip2W) + 4;
+    off2.height = Math.ceil(strip2H);
+    const oc2   = off2.getContext('2d');
+    oc2.font         = `bold ${fontSize}px 'Share Tech Mono', monospace`;
+    oc2.fillStyle    = S.color;
+    oc2.textBaseline = 'bottom';
+    let cx2 = 0;
+    for (let i = 0; i < groups2.length; i++) {
+      oc2.fillText(groups2[i], cx2, off2.height);
+      cx2 += widths2[i] + groupGap;
+    }
+
+    // Rotate the strip +90° to make it vertical (left→bottom, right→top)
+    const stampW = Math.ceil(strip2H);
+    const stampH = Math.ceil(strip2W) + 4;
+    const stamp  = document.createElement('canvas');
+    stamp.width  = stampW;
+    stamp.height = stampH;
+    const sc     = stamp.getContext('2d');
+    sc.translate(stampW, 0);
+    sc.rotate(Math.PI / 2);
+    sc.drawImage(off2, 0, 0);
+
+    // Paste stamp at the correct corner
+    if      (pos === 'br') ctx.drawImage(stamp, W - margin - stampW, H - margin - stampH);
+    else if (pos === 'bl') ctx.drawImage(stamp, margin,              H - margin - stampH);
+    else if (pos === 'tr') ctx.drawImage(stamp, W - margin - stampW, margin);
+    else                   ctx.drawImage(stamp, margin,              margin);
+
+  } else {
+    // Horizontal: "2026 - 06 - 24"
+    const text = `${yyyy} - ${mm} - ${dd}`;
+    const tw   = ctx.measureText(text).width;
+    let x, y;
+    if      (pos === 'br') { x = W - margin - tw; y = H - margin; }
+    else if (pos === 'bl') { x = margin;           y = H - margin; }
+    else if (pos === 'tr') { x = W - margin - tw; y = margin + fontSize; }
+    else                   { x = margin;           y = margin + fontSize; }
+    ctx.fillText(text, x, y);
+  }
+}
+
+// ─── Date parsing (mirrors py priority) ──────────────
+function parseDateFromName(stem) {
+  // 1a. with separator: 2026-06-24 or 2026_06_24
+  let m = stem.match(/(\d{4})[_-](\d{2})[_-](\d{2})/);
+  if (m) {
+    try {
+      const d = new Date(+m[1], +m[2]-1, +m[3]);
+      if (d.getFullYear() >= 2000) return { dt: d, src: 'filename' };
+    } catch(e) {}
+  }
+  // 1b. compact 8-digit, not adjacent to more digits
+  m = stem.match(/(?<!\d)(\d{4})(\d{2})(\d{2})(?!\d)/);
+  if (m) {
+    try {
+      const d = new Date(+m[1], +m[2]-1, +m[3]);
+      if (d.getFullYear() >= 2000) return { dt: d, src: 'filename' };
+    } catch(e) {}
+  }
+  // mmexport 13-digit ms timestamp (WeChat)
+  m = stem.match(/mmexport(\d{13})/);
+  if (m) {
+    try { return { dt: new Date(+m[1]), src: 'filename-ts' }; } catch(e) {}
+  }
+  // 10-digit unix timestamp
+  m = stem.match(/(?:^|[^\d])(\d{10})(?:[^\d]|$)/);
+  if (m) {
+    const ts = +m[1];
+    if (ts > 946684800 && ts < 4102444800)
+      return { dt: new Date(ts * 1000), src: 'filename-ts' };
+  }
+  return null;
+}
+
+async function readExif(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const buf  = e.target.result;
+        const view = new DataView(buf);
+        if (view.getUint16(0) !== 0xFFD8) { resolve(null); return; }
+        let off = 2;
+        while (off < buf.byteLength - 4) {
+          const marker = view.getUint16(off);
+          const segLen = view.getUint16(off + 2);
+          if (marker === 0xFFE1) {
+            const hdr = String.fromCharCode(...new Uint8Array(buf, off+4, 4));
+            if (hdr === 'Exif') {
+              const tiff = off + 10;
+              const le   = view.getUint16(tiff) === 0x4949;
+              const r16  = o => le ? view.getUint16(tiff+o, true) : view.getUint16(tiff+o);
+              const r32  = o => le ? view.getUint32(tiff+o, true) : view.getUint32(tiff+o);
+              const ifd0 = r32(4);
+              let exifOff = null;
+              const n0 = r16(ifd0);
+              for (let i = 0; i < n0; i++) {
+                const ep = ifd0 + 2 + i * 12;
+                if (r16(ep) === 0x8769) { exifOff = r32(ep + 8); break; }
+              }
+              const scanIFD = ifdOff => {
+                if (!ifdOff || ifdOff + 2 > buf.byteLength) return null;
+                const n = r16(ifdOff);
+                for (let i = 0; i < n; i++) {
+                  const ep = ifdOff + 2 + i * 12;
+                  if (ep + 12 > buf.byteLength) break;
+                  const tag = r16(ep);
+                  if ([0x9003, 0x9004, 0x0132].includes(tag)) {
+                    const vo = r32(ep + 8);
+                    if (tiff + vo + 20 > buf.byteLength) continue;
+                    const bytes = new Uint8Array(buf, tiff + vo, 20);
+                    const str = String.fromCharCode(...bytes).replace(/\0/g, '').trim();
+                    const m2 = str.match(/(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+                    if (m2) {
+                      const d = new Date(+m2[1],+m2[2]-1,+m2[3],+m2[4],+m2[5],+m2[6]);
+                      if (d.getFullYear() >= 2000) return d;
+                    }
+                  }
+                }
+                return null;
+              };
+              const dt = scanIFD(exifOff) || scanIFD(ifd0);
+              resolve(dt ? { dt, src: 'exif' } : null);
+              return;
+            }
+          }
+          if ((marker & 0xFF00) !== 0xFF00 || segLen < 2) break;
+          off += 2 + segLen;
+        }
+      } catch(e) {}
+      resolve(null);
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsArrayBuffer(file.slice(0, 131072));
+  });
+}
+
+async function getDateTime(file) {
+  // Priority 1: filename date
+  const stem = file.name.replace(/\.[^.]+$/, '');
+  const fromName = parseDateFromName(stem);
+  if (fromName) return fromName;
+  // Priority 2: EXIF
+  try {
+    const exif = await readExif(file);
+    if (exif) return exif;
+  } catch(e) {}
+  // Priority 3: file mtime
+  return { dt: new Date(file.lastModified || Date.now()), src: 'mtime' };
+}
+
+// ─── Image processing ─────────────────────────────────
+function loadImg(blob) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload  = () => { URL.revokeObjectURL(url); res(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('图片无法加载')); };
+    img.src = url;
+  });
+}
+
+async function processFile(file) {
+  let blob = file;
+  // HEIC → JPEG
+  if (/\.heic$/i.test(file.name)) {
+    try {
+      let r = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.95 });
+      blob = Array.isArray(r) ? r[0] : r;
+    } catch(e) { throw new Error('HEIC 解码失败：' + e.message); }
+  }
+
+  const { dt, src } = await getDateTime(file);
+  const img = await loadImg(blob);
+
+  const canvas  = document.createElement('canvas');
+  canvas.width  = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  drawWM(ctx, canvas.width, canvas.height, dt);
+
+  return new Promise((res, rej) => {
+    canvas.toBlob(b => {
+      if (!b) rej(new Error('图片导出失败'));
+      else res({ blob: b, dt, src });
+    }, 'image/jpeg', 0.95);
+  });
+}
+
+// ─── Drop zone ────────────────────────────────────────
+const dropZone  = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('over');
+  run([...e.dataTransfer.files]);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) run([...fileInput.files]);
+});
+
+// ─── Main flow ────────────────────────────────────────
+async function run(files) {
+  if (!files.length) return;
+  allResults = [];
+  S.firstImg = null;
+
+  dropZone.style.display = 'none';
+  document.getElementById('processing-area').style.display = 'block';
+  document.getElementById('result-area').style.display = 'none';
+  document.getElementById('result-area').innerHTML = '';
+
+  const total = files.length;
+  document.getElementById('prog-total').textContent = total;
+  document.getElementById('prog-done').textContent  = '0';
+  document.getElementById('prog-fill').style.width  = '0%';
+  document.getElementById('prog-sub').textContent   = '正在初始化…';
+
+  let done = 0, previewSet = false;
+
+  for (const file of files) {
+    try {
+      const { blob, dt, src } = await processFile(file);
+      allResults.push({ file, blob, dt, src, error: null });
+      if (!previewSet) {
+        previewSet = true;
+        const img = new Image();
+        img.onload = () => { S.firstImg = img; renderPreviewCanvas(); };
+        img.src = URL.createObjectURL(blob);
+      }
+    } catch(e) {
+      allResults.push({ file, blob: null, dt: null, src: null, error: e.message });
+    }
+    done++;
+    document.getElementById('prog-done').textContent = done;
+    document.getElementById('prog-fill').style.width = (done / total * 100).toFixed(1) + '%';
+    document.getElementById('prog-sub').textContent  =
+      `已处理 ${done} 张 · 剩余 ${total - done} 张`;
+    await new Promise(r => setTimeout(r, 0)); // yield to UI
+  }
+
+  showResults();
+}
+
+// ─── Results ─────────────────────────────────────────
+function showResults() {
+  document.getElementById('processing-area').style.display = 'none';
+  const ra = document.getElementById('result-area');
+  ra.style.display = 'block';
+  ra.innerHTML = '';
+
+  const success  = allResults.filter(r => !r.error);
+  const failed   = allResults.filter(r =>  r.error);
+  const mtime    = success.filter(r => r.src === 'mtime');
+  const fromName = success.filter(r => r.src === 'filename' || r.src === 'filename-ts').length;
+  const fromExif = success.filter(r => r.src === 'exif').length;
+
+  // card
+  const card = document.createElement('div');
+  card.className = 'result-card ' + (failed.length ? 'warn' : 'ok');
+
+  const isOk       = failed.length === 0;
+  const titleColor = isOk ? 'var(--green)' : 'var(--amber)';
+  const icon       = isOk ? '✓' : '⚠';
+  const titleText  = isOk
+    ? `全部完成 &nbsp;·&nbsp; ${success.length} 张成功`
+    : `${success.length} 张成功 &nbsp;·&nbsp; ${failed.length} 张失败`;
+
+  let html = `
+    <div class="rc-head rc-${isOk ? 'ok' : 'warn'}">
+      <span class="rc-icon" style="color:${titleColor}">${icon}</span>
+      <span class="rc-title" style="color:${titleColor}">${titleText}</span>
+    </div>
+    <div class="src-stats">
+      <span>文件名 <span>${fromName}</span> 张</span>
+      <span>EXIF <span>${fromExif}</span> 张</span>
+      <span>修改时间 <span>${mtime.length}</span> 张</span>
+    </div>`;
+
+  if (mtime.length > 0) {
+    html += `
+      <button class="expand-btn muted" onclick="toggle('mtime-list',this)">
+        ▶ ${mtime.length} 张使用了文件修改时间（时间可能不准）
+      </button>
+      <div class="clist mtime-bg" id="mtime-list">
+        ${mtime.map(r => `
+          <div class="clist-item">
+            <span class="ci-name">${esc(r.file.name)}</span>
+            <span class="ci-detail">修改时间: ${fmt(r.dt)}</span>
+          </div>`).join('')}
+      </div>`;
+  }
+
+  if (failed.length > 0) {
+    html += `
+      <button class="expand-btn amber" onclick="toggle('fail-list',this)">
+        ▶ 展开查看失败原因
+      </button>
+      <div class="clist fail-bg" id="fail-list">
+        ${failed.map(r => `
+          <div class="clist-item">
+            <span class="ci-name">${esc(r.file.name)}</span>
+            <span class="ci-detail">${esc(r.error)}</span>
+          </div>`).join('')}
+      </div>`;
+  }
+
+  card.innerHTML = html;
+  ra.appendChild(card);
+
+  // buttons
+  const ar = document.createElement('div');
+  ar.className = 'action-row';
+
+  if (success.length) {
+    const b = document.createElement('button');
+    b.className = 'btn btn-primary';
+    b.textContent = `↓ 下载全部成功项（${success.length} 张）`;
+    b.onclick = () => dlZip(success, 'watermarked_photos.zip',
+      r => r.blob, r => r.file.name.replace(/\.[^.]+$/, '') + '_stamped.jpg');
+    ar.appendChild(b);
+  }
+  if (failed.length) {
+    const b = document.createElement('button');
+    b.className = 'btn btn-warn';
+    b.textContent = `↓ 导出失败项原图（${failed.length} 张）`;
+    b.onclick = () => dlZip(failed, 'failed_originals.zip', r => r.file, r => r.file.name);
+    ar.appendChild(b);
+  }
+  ra.appendChild(ar);
+
+  const rr = document.createElement('div');
+  rr.className = 'reset-row';
+  rr.innerHTML = `<button class="reset-btn" onclick="resetAll()">↩ 重新上传</button>`;
+  ra.appendChild(rr);
+}
+
+// ─── Helpers ─────────────────────────────────────────
+function toggle(id, btn) {
+  const el = document.getElementById(id);
+  el.classList.toggle('open');
+  btn.textContent = btn.textContent.replace(/^[▶▼]/, el.classList.contains('open') ? '▼' : '▶');
+}
+
+async function dlZip(items, zipName, getBlob, getName) {
+  if (items.length === 1) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(getBlob(items[0]));
+    a.download = getName(items[0]);
+    a.click(); return;
+  }
+  const zip = new JSZip();
+  for (const r of items) zip.file(getName(r), getBlob(r));
+  const content = await zip.generateAsync({ type: 'blob' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(content);
+  a.download = zipName;
+  a.click();
+}
+
+function resetAll() {
+  allResults = [];
+  S.firstImg = null;
+  fileInput.value = '';
+  dropZone.style.display = 'block';
+  document.getElementById('processing-area').style.display = 'none';
+  document.getElementById('result-area').style.display     = 'none';
+  document.getElementById('result-area').innerHTML         = '';
+  updatePreview(); // re-render placeholder
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function fmt(d) {
+  if (!d) return '-';
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// init
+updatePreview();
+</script>
+</body>
+</html>
