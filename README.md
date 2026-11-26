@@ -12,5 +12,6 @@
 
 - 开发方式：Claude 辅助生成代码，独立完成需求定义、交互设计、体验调优
 - 技术：纯 HTML，无后端，开箱即用
-- 在线演示：https://sienna2026.github.io/watermark/
+- 在线网址：https://sienna2026.github.io/watermark/
 
+使用提示：直接打开在线页面，选择多张照片上传即可；优先保证照片带有 EXIF 拍摄时间。
